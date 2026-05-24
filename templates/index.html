@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>狼人杀 12人局</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;height:100vh;overflow:hidden}
+
+/* ── Layout ── */
+.app{display:flex;height:100vh}
+
+/* ── Top Bar ── */
+.top-bar{position:fixed;top:0;left:0;right:0;height:44px;background:#16213e;display:flex;align-items:center;padding:0 16px;gap:8px;z-index:100;border-bottom:1px solid #2a2a4a}
+.top-bar button{padding:5px 14px;border:none;border-radius:5px;cursor:pointer;font-size:13px}
+.btn-start{background:#e94560;color:#fff}
+.btn-stop{background:#ff8c00;color:#fff}
+.btn-stop:disabled{background:#555;color:#888;cursor:not-allowed}
+.btn-reset{background:#444;color:#ccc}
+.btn-start:hover{background:#d63850}
+.btn-reset:hover{background:#555}
+.status-text{margin-left:auto;font-size:12px;color:#888}
+
+/* ── Settings Modal ── */
+.btn-settings{background:#2a2a4a;color:#fff;margin-left:10px}
+.btn-settings:hover{background:#3a3a5a}
+.btn-mode{background:#1a472a;color:#7bfa7b;margin-left:4px;border:1px solid #7bfa7b;font-weight:bold}
+.btn-mode:hover{background:#22593a}
+.btn-mode.manual{background:#4a2a0a;color:#fad07b;border-color:#fad07b}
+.btn-mode.manual:hover{background:#5a3a1a}
+/* Space-to-continue prompt */
+.space-prompt{display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(233,69,96,0.92);color:#fff;padding:10px 28px;border-radius:24px;font-size:14px;font-weight:bold;z-index:200;letter-spacing:1px;box-shadow:0 4px 20px rgba(233,69,96,0.5);animation:pulse 1.2s infinite}
+.space-prompt.visible{display:block}
+@keyframes pulse{0%,100%{box-shadow:0 4px 20px rgba(233,69,96,0.5)}50%{box-shadow:0 4px 32px rgba(233,69,96,0.9)}}
+.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:1000;justify-content:center;align-items:center}
+.modal-content{background:#1a1a2e;padding:20px;border-radius:8px;border:1px solid #2a2a4a;width:450px;color:#e0e0e0;animation:fadeIn .2s ease}
+.modal-content h3{margin-bottom:15px;text-align:center;color:#fff}
+.setting-item{margin-bottom:20px}
+.setting-item label.main-label{display:block;font-size:13px;color:#888;margin-bottom:8px}
+.setting-item select{width:100%;padding:8px;background:#16213e;color:#fff;border:1px solid #2a2a4a;border-radius:4px;outline:none;font-size:14px}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end}
+.modal-actions button{padding:6px 14px;border:none;border-radius:4px;cursor:pointer;font-size:13px}
+.btn-save{background:#e94560;color:#fff}
+.btn-cancel{background:#444;color:#ccc}
+.btn-save:hover{background:#d63850}
+
+/* ── 独立玩家可视化配置面板 ── */
+.player-configs-container{max-height:300px;overflow-y:auto;background:#16213e;border:1px solid #2a2a4a;padding:10px;border-radius:4px;margin-top:10px}
+.player-config-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px dashed #2a2a4a;align-items:center}
+.player-config-row:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0}
+.player-config-header{display:flex;align-items:center;gap:8px;width:100%;font-size:13px;color:#fff}
+.player-config-inputs{display:none;flex-direction:column;gap:6px;width:100%;margin-top:6px}
+.player-config-inputs.active{display:flex}
+.player-config-inputs input{width:100%;padding:6px;background:#1a1a2e;color:#fff;border:1px solid #2a2a4a;border-radius:4px;outline:none;font-size:12px}
+
+/* ── Left Panel ── */
+.roster-panel{width:220px;min-width:220px;margin-top:44px;padding:8px;overflow-y:auto;background:#16213e;border-right:1px solid #2a2a4a;height:calc(100vh - 44px)}
+.roster-card{display:flex;align-items:center;gap:8px;padding:6px 8px;margin-bottom:4px;border-radius:6px;border:1px solid #2a2a4a;background:#1a1a2e;transition:all .3s;font-size:13px}
+.roster-card.dead{opacity:.35;filter:grayscale(1)}
+.roster-card.speaking{border-color:#e94560;box-shadow:0 0 8px rgba(233,69,96,.3)}
+.roster-avatar{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;color:#fff;flex-shrink:0}
+.roster-model{font-size:9px;color:#a0a0b0;background:#2a2a4a;padding:2px 5px;border-radius:4px;margin-left:6px;vertical-align:middle;display:inline-block;max-width:90px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ra-wolf{background:#e94560}
+.ra-seer{background:#7b7bfa}
+.ra-witch{background:#4ecdc4}
+.ra-hunter{background:#fad07b;color:#333}
+.ra-guard{background:#7bfa7b;color:#333}
+.ra-villager{background:#888}
+.roster-info{flex:1;min-width:0}
+.roster-name{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.roster-role{font-size:11px;color:#888}
+.roster-status{font-size:11px;padding:2px 6px;border-radius:3px;flex-shrink:0}
+.rs-alive{color:#7bfa7b}
+.rs-dead{color:#e94560}
+.rs-speaking{color:#e94560;animation:blink 1s infinite}
+
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* ── Feed Panel ── */
+.feed-panel{flex:1;margin-top:44px;padding:12px 24px 60px 24px;overflow-y:auto;height:calc(100vh - 44px)}
+.entry{width:100%;margin-bottom:6px;padding:8px 16px;border-radius:6px;animation:fadeIn .3s ease;text-align:center}
+/* system/death/phases — centered */
+.entry-highlight{background:rgba(123,123,250,.06)}
+.entry-death{background:rgba(233,69,96,.1);padding:10px 16px;font-size:14px;font-weight:bold;color:#e94560}
+.entry-sys{padding:4px;font-size:12px;color:#888}
+/* Night action subtypes — colored left border + tinted bg */
+.entry-act{position:relative;padding:8px 16px;margin-bottom:8px;border-radius:6px;border-left:4px solid #555;background:rgba(255,255,255,.02)}
+.entry-act-n{background:rgba(233,69,96,.08);border-left-color:#e94560}
+.entry-act-s{background:rgba(123,123,250,.08);border-left-color:#7b7bfa}
+.entry-act-w{background:rgba(78,205,196,.08);border-left-color:#4ecdc4}
+.entry-act-g{background:rgba(123,250,123,.08);border-left-color:#7bfa7b}
+.entry-act-d{background:rgba(250,208,123,.06);border-left-color:#fad07b;text-align:left}
+.entry-act-v{background:rgba(255,140,0,.08);border-left-color:#ff8c00;padding-right:230px;min-height:62px}
+/* meta bar */
+.act-meta{font-size:11px;color:#888;margin-bottom:4px;text-align:center}
+.act-thinking{background:rgba(123,123,250,.08);padding:6px 10px;border-radius:4px;margin:4px auto;color:#b0b0ff;font-size:12px;line-height:1.5;text-align:left;max-width:700px}
+.act-speech{padding:6px 10px;border-radius:4px;margin:4px auto;color:#ddd;font-size:13px;line-height:1.5;text-align:left;max-width:700px}
+.entry-act-v .act-thinking,.entry-act-v .act-speech{max-width:760px;margin-left:auto;margin-right:auto}
+.vote-result{position:absolute;right:18px;top:50%;transform:translateY(-50%);width:190px;padding:8px 10px;border-radius:6px;background:rgba(255,140,0,.14);border:1px solid rgba(255,140,0,.45);color:#ffd18a;font-size:14px;font-weight:bold;text-align:center;box-sizing:border-box}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+</style>
+</head>
+<body>
+<div class="top-bar">
+  <button class="btn-start" id="btnStart" onclick="startGame()">🎮 开始</button>
+  <button class="btn-stop" id="btnStop" onclick="stopGame()" disabled>⏹️ 停止</button>
+  <button class="btn-reset" onclick="resetGame()">🔄 重置</button>
+  <button class="btn-settings" onclick="openSettings()">⚙️ 设置</button>
+  <button class="btn-mode" id="btnMode" onclick="toggleMode()" title="切换手动/自动模式">⚡ 自动</button>
+  <span class="status-text" id="statusText">等待开始</span>
+</div>
+<div class="app">
+  <div class="roster-panel" id="rosterPanel">
+    <div id="rosterList"></div>
+  </div>
+  <div class="feed-panel" id="feedContainer"></div>
+</div>
+
+<div id="settingsModal" class="modal">
+  <div class="modal-content">
+    <h3>⚙️ 游戏设置</h3>
+
+    <div class="setting-item">
+      <label class="main-label">全局默认模型 (即刻生效):</label>
+      <select id="aiModelSelect">
+        <option value="deepseek-chat">DeepSeek Chat (V3)</option>
+        <option value="deepseek-reasoner">DeepSeek Reasoner (R1)</option>
+        <option value="gpt-4o">GPT-4o (OpenAI)</option>
+        <option value="claude-3-5-sonnet-20240620">Claude 3.5 Sonnet</option>
+        <option value="grok-beta">Grok Beta (xAI)</option>
+      </select>
+    </div>
+
+    <div class="setting-item">
+      <label class="main-label">游戏人数 (重置后生效):</label>
+      <select id="playerCountSelect" onchange="renderPlayerConfigs()">
+        <option value="12">12人标准局 (4狼4民4神)</option>
+        <option value="6">6人娱乐局 (2狼2民2神-预女)</option>
+      </select>
+    </div>
+
+    <div class="setting-item">
+      <label class="main-label">🔥 高级：独立玩家可视化配置</label>
+      <div style="font-size: 11px; color: #888;">开启独立配置将覆盖该玩家的全局模型。支持兼容 OpenAI 格式的接口。</div>
+      <div id="playerConfigsContainer" class="player-configs-container"></div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeSettings()">取消</button>
+      <button class="btn-save" onclick="saveSettings()">保存</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<div id="spacePrompt" class="space-prompt">⌨️ 按空格键查看下一条发言</div>
+
+<script>
+// ── State ──
+let gameState = null;
+let lastRenderedSeq = 0;
+let typingQueue = [];
+let isTyping = false;
+let speakingPlayer = null;
+let deadPlayers = {};
+
+// ── Manual / Auto Mode ──
+let manualMode = false;
+let waitingForSpace = false;
+let readyForNextAction = false; // 按下空格后置true，消费一次后归false
+
+function toggleMode() {
+  manualMode = !manualMode;
+  const btn = document.getElementById('btnMode');
+  if (manualMode) {
+    btn.textContent = '🖐️ 手动';
+    btn.classList.add('manual');
+    btn.title = '当前：手动模式 — 按空格键逐条查看发言';
+  } else {
+    btn.textContent = '⚡ 自动';
+    btn.classList.remove('manual');
+    btn.title = '当前：自动模式 — 发言自动连续播放';
+    if (waitingForSpace) {
+      waitingForSpace = false;
+      hideSpacePrompt();
+      isTyping = false;
+      processQueue();
+    }
+  }
+}
+
+function showSpacePrompt() {
+  document.getElementById('spacePrompt').classList.add('visible');
+}
+
+function hideSpacePrompt() {
+  document.getElementById('spacePrompt').classList.remove('visible');
+}
+
+// Global spacebar listener
+document.addEventListener('keydown', function(e) {
+  if (e.code === 'Space' && !e.target.matches('input,textarea,select')) {
+    e.preventDefault();
+    if (waitingForSpace) {
+      waitingForSpace = false;
+      readyForNextAction = true;  // 本次空格授权显示下一个action
+      hideSpacePrompt();
+      isTyping = false;
+      processQueue();
+    }
+  }
+});
+
+let currentPlayerConfigs = {};
+let currentPlayerCount = 12; // 默认12人，设置界面可切换
+
+
+// ── Default Roster ──
+
+function showDefaultRoster() {
+  const roster = document.getElementById('rosterList');
+  if (!roster) return;
+  roster.innerHTML = '';
+  for (let i = 1; i <= currentPlayerCount; i++) {
+    const name = i + '号';
+    const card = document.createElement('div');
+    card.className = 'roster-card';
+    card.id = 'rc-' + name;
+    card.innerHTML = `<div class="roster-avatar ra-villager">${i}</div>
+      <div class="roster-info"><div class="roster-name">${escapeHtml(name)}</div><div class="roster-role">?</div></div>
+      <div class="roster-status rs-alive">等待中</div>`;
+    roster.appendChild(card);
+  }
+}
+showDefaultRoster();
+
+// ── Roster Update ──
+const ROLE_AVATAR = {狼人:'ra-wolf',预言家:'ra-seer',女巫:'ra-witch',猎人:'ra-hunter',守卫:'ra-guard',平民:'ra-villager'};
+const ROLE_COLOR = {狼人:'#e94560',预言家:'#7b7bfa',女巫:'#4ecdc4',猎人:'#fad07b',守卫:'#7bfa7b',平民:'#888'};
+
+function updateRoster() {
+  if (!gameState || !gameState.players || gameState.players.length === 0) {
+    showDefaultRoster();
+    return;
+  }
+  const roster = document.getElementById('rosterList');
+  roster.innerHTML = '';
+  const globalModel = gameState.ai_model || 'deepseek-chat';
+  const pConfigs = gameState.player_configs || {};
+  gameState.players.forEach(p => {
+    if (p.alive === false) deadPlayers[p.name] = true;
+    const isDead = p.alive === false || !!deadPlayers[p.name];
+    const isSpeak = speakingPlayer === p.name;
+    const card = document.createElement('div');
+    card.className = 'roster-card' + (isDead ? ' dead' : '') + (isSpeak ? ' speaking' : '');
+    card.id = 'rc-' + p.name;
+    const avClass = ROLE_AVATAR[p.role] || 'ra-villager';
+    const roleDisplay = (p.role === '狼人' ? '🐺 狼人' : p.role) || '?';
+    const seatNum = p.name.match(/\d+/)?.[0] || p.name[0];
+    const modelName = p.model || (pConfigs[p.name] ? pConfigs[p.name].model : null) || globalModel || 'Unknown';
+    // 只有身份分配后才显示模型
+    const showModel = !!p.role;
+    const modelHtml = showModel ? `<span class="roster-model" title="${escapeHtml(modelName)}">${escapeHtml(modelName)}</span>` : '';
+    card.innerHTML = `<div class="roster-avatar ${avClass}">${seatNum}</div>
+      <div class="roster-info"><div class="roster-name">${escapeHtml(p.name)}${modelHtml}</div><div class="roster-role">${roleDisplay}</div></div>
+      <div class="roster-status ${isDead ? 'rs-dead' : (isSpeak ? 'rs-speaking' : 'rs-alive')}">${isDead ? '☠️' : (isSpeak ? '💬 发言中' : '存活')}</div>`;
+    roster.appendChild(card);
+  });
+}
+
+// ── WebSocket ──
+let ws = null;
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(proto + '//' + location.host + '/ws');
+  ws.onmessage = function(e) {
+    try {
+      const d = JSON.parse(e.data);
+      gameState = d;
+      if (d.player_count) currentPlayerCount = d.player_count;
+      // 服务端状态是最终事实；打字机只负责让死亡公告慢慢显示。
+      if (d.players) {
+        d.players.forEach(p => { if (!p.alive) deadPlayers[p.name] = true; });
+      }
+      if (d.action_feed && d.game_log) {
+        render();
+        updateRoster();  // 每次消息都同步左侧列表
+      } else {
+        // Initial state or reset
+        lastRenderedSeq = 0;
+        typingQueue = [];
+        isTyping = false;
+        deadPlayers = {};
+        render();
+        updateRoster();
+      }
+      document.getElementById('statusText').textContent = d.phase || '等待开始';
+      // 游戏结束 → 恢复按钮
+      if (d.phase === '游戏结束') {
+        document.getElementById('btnStart').textContent = '🎮 开始';
+        document.getElementById('btnStart').disabled = false;
+        document.getElementById('btnStop').disabled = true;
+      }
+    } catch(e2) {}
+  };
+  ws.onclose = function() { setTimeout(connectWS, 1000); };
+}
+connectWS();
+
+// ── Typing Queue ──
+const SPEED = {thinking: 80, speech: 60, system: 40, role: 80};
+
+function typeText(element, text, speed, callback) {
+  if (!text) { callback?.(); return; }
+  const chars = [...text];
+  let i = 0;
+  element.textContent = '';
+  const timer = setInterval(() => {
+    if (i >= chars.length) { clearInterval(timer); callback?.(); return; }
+    element.textContent += chars[i++];
+    const feed = document.getElementById('feedContainer');
+    if (feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 80) {
+      feed.scrollTop = feed.scrollHeight;
+    }
+  }, speed);
+  return timer;
+}
+
+function inferVoteTarget(act) {
+  const explicit = Number(act.vote_target || 0);
+  if (explicit > 0) return explicit;
+  const text = `${act.speech || ''}\n${act.thinking || ''}`;
+  const jsonMatch = text.match(/\{[^}]*\}/);
+  if (jsonMatch) {
+    try {
+      const data = JSON.parse(jsonMatch[0]);
+      const v = Number(data.vote || data.target || 0);
+      if (v > 0) return v;
+    } catch (_) {}
+  }
+  const pairPatterns = [
+    /(\d+)\s*号?\s*(?:投|票|投给|票给|出|归票|冲票)\s*(\d+)\s*号?/,
+  ];
+  for (const pat of pairPatterns) {
+    const m = text.match(pat);
+    if (m) return Number(m[2]);
+  }
+  const patterns = [
+    /(?:我投|投给|投票给|票给|归票|冲票|挂票|先出|今天出|必须出|建议出|我出|投|票|出)\s*(\d+)\s*号?/,
+    /(\d+)\s*号?[^，。；;！？]*?(?:视角)?(?:最可疑|可疑|问题最大|狼面最大|匪面最大|最像狼|像狼)/,
+    /(\d+)\s*号?\s*(?:出局|上票|该出|必须出|可以出|是狼|铁狼|匪面大|最稳)/,
+  ];
+  for (const pat of patterns) {
+    const m = text.match(pat);
+    if (m) return Number(m[1]);
+  }
+  return 0;
+}
+
+// Called when one queue item finishes rendering
+function doneTyping() {
+  speakingPlayer = null;
+  updateRoster();
+  isTyping = false;
+  processQueue();  // processQueue自己决定是否要等空格
+}
+
+function processQueue() {
+  if (isTyping || waitingForSpace || typingQueue.length === 0) {
+    if (typingQueue.length === 0) {
+      speakingPlayer = null;
+      hideSpacePrompt();
+    }
+    return;
+  }
+
+  const nextJob = typingQueue[0];
+
+  // 手动模式：每个 action（玩家发言/投票/夜晚行动）开始前都需要按空格
+  if (manualMode && nextJob.kind === 'action') {
+    if (!readyForNextAction) {
+      // 还没按空格，停下来等
+      waitingForSpace = true;
+      showSpacePrompt();
+      return;
+    }
+    // 已按空格，消费授权，继续
+    readyForNextAction = false;
+  }
+
+  isTyping = true;
+  const job = typingQueue.shift();
+  const feed = document.getElementById('feedContainer');
+  const entry = document.createElement('div');
+
+  if (job.kind === 'action') {
+    const act = job.data;
+    speakingPlayer = act.player;
+    updateRoster();
+    // Action type → CSS class suffix
+    const actCSS = {'night_kill':'n','night_seer':'s','night_seer_result':'s','night_witch':'w','night_guard':'g','day_speech':'d','vote':'v','night_hunter_shot':'n','vote_hunter_shot':'v'}[act.type] || '';
+    entry.className = 'entry entry-act' + (actCSS ? ' entry-act-' + actCSS : '');
+
+    // Meta
+    const meta = document.createElement('div');
+    meta.className = 'act-meta';
+    const role = gameState?.players?.find(p => p.name === act.player)?.role || '';
+    const icon = {'night_guard':'🛡️','night_kill':'🐺','night_witch':'💊','night_seer':'🔮','night_seer_result':'🔮','night_hunter_shot':'🏹','vote_hunter_shot':'🏹','vote':'🗳️','day_speech':'💬'}[act.type] || '💬';
+    meta.textContent = `· ${act.player} · ${role} · ${icon} ${act.type === 'day_speech' ? '发言' : act.type === 'vote' ? '投票' : act.type === 'night_kill' ? '狼人密谋' : act.type === 'night_guard' ? '守卫守护' : act.type === 'night_witch' ? '女巫行动' : act.type === 'night_seer' ? '预言家查验' : act.type === 'night_seer_result' ? '查验结果' : act.type === 'night_hunter_shot' || act.type === 'vote_hunter_shot' ? '猎人开枪' : act.type}`;
+    entry.appendChild(meta);
+    if (act.type === 'vote') {
+      const voteEl = document.createElement('div');
+      voteEl.className = 'vote-result';
+      const inferredVote = inferVoteTarget(act);
+      voteEl.textContent = inferredVote ? `${act.player}投${inferredVote}号` : `${act.player}投？号`;
+      entry.appendChild(voteEl);
+    }
+
+    // Thinking
+    if (act.thinking && act.thinking !== act.speech) {
+      const thinkEl = document.createElement('div');
+      thinkEl.className = 'act-thinking';
+      entry.appendChild(thinkEl);
+      if (act.speech) {
+        // Thinking first, then speech
+        typeText(thinkEl, '💭 ' + act.thinking, SPEED.thinking, () => {
+          const speechEl = document.createElement('div');
+          speechEl.className = 'act-speech';
+          entry.appendChild(speechEl);
+          typeText(speechEl, '🎬 ' + act.speech, SPEED.speech, () => {
+            doneTyping();
+          });
+        });
+      } else {
+        typeText(thinkEl, '💭 ' + act.thinking, SPEED.thinking, () => {
+          doneTyping();
+        });
+      }
+    } else {
+      if (act.speech) {
+        const speechEl = document.createElement('div');
+        speechEl.className = 'act-speech';
+        entry.appendChild(speechEl);
+        typeText(speechEl, '🎬 ' + act.speech, SPEED.speech, () => {
+          doneTyping();
+        });
+      } else {
+        doneTyping();
+      }
+    }
+  } else if (job.kind === 'log') {
+    const log = job.data;
+    speakingPlayer = null;
+    updateRoster();
+
+    if (log.cls === 'sys-death' || log.content.startsWith('☠️') || log.content.startsWith('📢') || log.content.startsWith('🗳️') || log.content.startsWith('🏹')) {
+      entry.className = 'entry entry-death';
+      // 覆盖所有死亡公告模式：夜晚去世 / 投票出局 / 猎人开枪
+      const deathPatterns = [
+        /📢 (.+?) 昨晚去世/,
+        /🗳️ (.+?) 被投票出局/,
+        /🏹 (.+?) 被猎人开枪带走/,
+      ];
+      for (const pat of deathPatterns) {
+        const m = log.content.match(pat);
+        if (m) {
+          deadPlayers[m[1]] = true;
+          updateRoster();
+          break;
+        }
+      }
+      typeText(entry, log.content, SPEED.system, () => { isTyping = false; processQueue(); });
+    } else if (log.cls === 'sys-phase' || log.cls === 'sys-night' || log.cls === 'sys-vote') {
+      entry.className = 'entry entry-highlight';
+      let prefix = '';
+      if (log.content.startsWith('🌙')) prefix = '';
+      else if (log.content.startsWith('☀️')) prefix = '';
+      typeText(entry, log.content, SPEED.system, () => { isTyping = false; processQueue(); });
+    } else if (log.type === 'role_assign') {
+      entry.className = 'entry entry-highlight';
+      typeText(entry, log.content, SPEED.role, () => {
+        const m2 = log.content.match(/🎭 (.+?) 的身份是：(.+)/);
+        if (m2) {
+          // Update roster role display
+          updateRoster();
+        }
+        isTyping = false; processQueue();
+      });
+    } else {
+      entry.className = 'entry entry-sys';
+      entry.textContent = log.content;
+      isTyping = false;
+      processQueue();
+    }
+  } else {
+    isTyping = false;
+    processQueue();
+  }
+
+  if (entry.parentNode === null) {
+    feed.appendChild(entry);
+  }
+}
+
+// ── Render ──
+function render() {
+  if (!gameState) return;
+
+  const merged = [];
+  for (const log of (gameState.game_log || [])) {
+    if (log.content && log.content.startsWith('📊 投票详情')) continue;
+    merged.push({ kind: 'log', seq: log.seq || 0, data: log });
+  }
+  for (const act of (gameState.action_feed || [])) {
+    merged.push({ kind: 'action', seq: act.seq || 0, data: act });
+  }
+  merged.sort((a, b) => a.seq - b.seq);
+
+  const newItems = merged.filter(m => m.seq > lastRenderedSeq);
+  if (newItems.length === 0) return;
+
+  // If feed is empty (reset), clear everything
+  const feed = document.getElementById('feedContainer');
+  if (feed.children.length === 0 && merged.length > 0) {
+    lastRenderedSeq = 0;
+    deadPlayers = {};
+    typingQueue = [];
+    isTyping = false;
+    waitingForSpace = false;
+    readyForNextAction = false;
+    hideSpacePrompt();
+    const freshItems = merged.filter(m => m.seq > 0);
+    freshItems.forEach(item => typingQueue.push(item));
+  } else {
+    newItems.forEach(item => typingQueue.push(item));
+  }
+
+  lastRenderedSeq = Math.max(...merged.map(m => m.seq));
+  processQueue();
+}
+
+// ── Actions ──
+async function startGame() {
+  const isResume = document.getElementById('btnStart').textContent.includes('继续');
+
+  if (!isResume) {
+    // 全新开始：清空旧屏幕，防止上局聊天残留
+    document.getElementById('feedContainer').innerHTML = '';
+    lastRenderedSeq = 0;
+    typingQueue = [];
+    isTyping = false;
+    deadPlayers = {};
+    waitingForSpace = false;
+    hideSpacePrompt();
+  }
+
+  const r = await (await fetch('/start', {method:'POST'})).json();
+  if (r.status === 'started' || r.status === 'resumed') {
+    document.getElementById('btnStart').disabled = true;
+    document.getElementById('btnStop').disabled = false;
+  }
+}
+async function stopGame() {
+  const r = await (await fetch('/stop', {method:'POST'})).json();
+  if (r.status === 'stopped') {
+    document.getElementById('btnStart').textContent = '▶️ 继续';
+    document.getElementById('btnStart').disabled = false;
+    document.getElementById('btnStop').disabled = true;
+  }
+}
+async function resetGame() {
+  await fetch('/reset', {method:'POST'});
+  document.getElementById('feedContainer').innerHTML = '';
+  document.getElementById('btnStart').textContent = '🎮 开始';
+  document.getElementById('btnStart').disabled = false;
+  document.getElementById('btnStop').disabled = true;
+  lastRenderedSeq = 0;
+  typingQueue = [];
+  isTyping = false;
+  deadPlayers = {};
+  speakingPlayer = null;
+  waitingForSpace = false;
+  readyForNextAction = false;
+  hideSpacePrompt();
+  updateRoster();
+  document.getElementById('statusText').textContent = '已重置';
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// ── Settings ──
+
+function renderPlayerConfigs() {
+  const container = document.getElementById('playerConfigsContainer');
+  container.innerHTML = '';
+  // 根据下拉框当前值渲染，不是系统现存人数
+  const pCountSelect = document.getElementById('playerCountSelect');
+  const renderCount = pCountSelect ? parseInt(pCountSelect.value) : currentPlayerCount;
+  for (let i = 1; i <= renderCount; i++) {
+    const pName = i + '号';
+    const cfg = currentPlayerConfigs[pName] || {};
+    const isEnabled = !!currentPlayerConfigs[pName];
+    const row = document.createElement('div');
+    row.className = 'player-config-row';
+    row.innerHTML = `
+      <div class="player-config-header">
+        <input type="checkbox" id="enable-${i}" ${isEnabled ? 'checked' : ''} onchange="togglePlayerConfig(${i})">
+        <label for="enable-${i}" style="margin:0; color:#e0e0e0; cursor:pointer; font-weight:bold;">${pName} 独立 API 配置</label>
+      </div>
+      <div class="player-config-inputs ${isEnabled ? 'active' : ''}" id="inputs-${i}">
+        <input type="text" id="model-${i}" placeholder="模型名称 (例: gpt-4o)" value="${cfg.model || ''}">
+        <input type="password" id="key-${i}" placeholder="API Key (sk-...)" value="${cfg.api_key || ''}">
+        <input type="text" id="base-${i}" placeholder="API Base URL" value="${cfg.api_base || 'https://api.openai.com/v1/chat/completions'}">
+      </div>
+    `;
+    container.appendChild(row);
+  }
+}
+
+function togglePlayerConfig(id) {
+  const inputs = document.getElementById('inputs-' + id);
+  if (document.getElementById('enable-' + id).checked) {
+    inputs.classList.add('active');
+  } else {
+    inputs.classList.remove('active');
+  }
+}
+
+function openSettings() {
+  // 同步下拉框到当前真实人数
+  const pCountSelect = document.getElementById('playerCountSelect');
+  if (pCountSelect) pCountSelect.value = currentPlayerCount;
+  renderPlayerConfigs();
+  document.getElementById('settingsModal').style.display = 'flex';
+}
+
+function closeSettings() {
+  document.getElementById('settingsModal').style.display = 'none';
+}
+
+async function saveSettings() {
+  const model = document.getElementById('aiModelSelect').value;
+  const pCount = parseInt(document.getElementById('playerCountSelect').value);
+  currentPlayerCount = pCount;
+  const newPlayerConfigs = {};
+  for (let i = 1; i <= pCount; i++) {
+    const checkbox = document.getElementById('enable-' + i);
+    // 防呆：面板切换时某些框号可能不存在
+    if (checkbox && checkbox.checked) {
+      const pName = i + '号';
+      const pModel = document.getElementById('model-' + i).value.trim();
+      const pKey = document.getElementById('key-' + i).value.trim();
+      const pBase = document.getElementById('base-' + i).value.trim();
+      if (pModel || pKey) {
+        newPlayerConfigs[pName] = {
+          model: pModel,
+          api_key: pKey,
+          api_base: pBase
+        };
+      }
+    }
+  }
+  try {
+    await fetch('/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ai_model: model, player_configs: newPlayerConfigs, player_count: pCount })
+    });
+    currentPlayerConfigs = newPlayerConfigs;
+    document.getElementById('statusText').textContent = '可视化参数设定已保存';
+    closeSettings();
+  } catch(e) {
+    console.error('保存设置失败', e);
+  }
+}
+</script>
+</body>
+</html>
